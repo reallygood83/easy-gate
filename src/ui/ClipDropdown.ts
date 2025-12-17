@@ -46,21 +46,30 @@ export class ClipDropdown {
     show(event: MouseEvent | HTMLElement): void {
         const menu = new Menu()
 
-        // 📋 전체 페이지 클리핑 (기본 동작)
+        // 헤더: 저장 옵션 안내
         menu.addItem((item) =>
             item
-                .setTitle('📋 전체 페이지 클리핑')
+                .setTitle('📥 웹페이지 저장 옵션')
+                .setDisabled(true)
+        )
+
+        menu.addSeparator()
+
+        // 📄 전체 페이지 저장 (기본 동작)
+        menu.addItem((item) =>
+            item
+                .setTitle('📄 전체 페이지 저장')
                 .setIcon('file-plus')
                 .onClick(() => {
                     this.onClipPage()
                 })
         )
 
-        // 📝 선택 텍스트 클리핑
+        // ✂️ 선택 영역 저장
         menu.addItem((item) =>
             item
-                .setTitle('📝 선택 텍스트 클리핑')
-                .setIcon('text-select')
+                .setTitle('✂️ 선택 영역 저장')
+                .setIcon('scissors')
                 .onClick(() => {
                     this.onClipSelection()
                 })
@@ -208,8 +217,8 @@ export function createClipButton(
 
     // 메인 클립 버튼 (원클릭)
     const mainBtn = wrapper.createEl('button', { cls: 'easy-gate-clip-btn' })
-    mainBtn.textContent = '📋'
-    mainBtn.title = '클리핑 (클릭: 빠른 저장)'
+    mainBtn.textContent = '📥'
+    mainBtn.title = '저장 (클릭: 전체 페이지 저장)'
     mainBtn.onclick = (e) => {
         e.preventDefault()
         onQuickClip()
@@ -218,7 +227,7 @@ export function createClipButton(
     // 드롭다운 버튼
     const dropdownBtn = wrapper.createEl('button', { cls: 'easy-gate-clip-dropdown-btn' })
     dropdownBtn.textContent = '▼'
-    dropdownBtn.title = '클리핑 옵션'
+    dropdownBtn.title = '저장 옵션 더보기'
     dropdownBtn.onclick = (e) => {
         e.preventDefault()
         dropdown.show(e)

@@ -272,9 +272,42 @@ export class GateView extends ItemView {
             loading.hide()
 
             if (response.success) {
-                // 요약 결과를 새 노트로 생성
-                const fileName = `AI 요약 - ${content.title || 'Untitled'} - ${new Date().toISOString().slice(0, 10)}.md`
-                const noteContent = `# ${content.title || 'AI 요약'}\n\n${response.content}\n\n---\n원본 URL: ${await ContentExtractor.getCurrentUrl(this.frame as WebviewTag)}`
+                // 요약 결과를 새 노트로 생성 (YAML frontmatter 포함)
+                const timestamp = new Date().toISOString().split('T')[0]
+                const currentUrl = await ContentExtractor.getCurrentUrl(this.frame as WebviewTag)
+                const fileName = `AI 요약 - ${content.title || 'Untitled'} - ${timestamp}.md`
+
+                // YAML frontmatter가 포함된 노트 내용 생성
+                const noteContent = `---
+title: "${content.title || 'AI 요약'}"
+source: "${currentUrl}"
+created: ${timestamp}
+type: ai-summary
+provider: ${this.plugin.settings.ai.provider}
+site: "${content.siteName || ''}"
+tags:
+  - ai-summary
+  - easy-gate
+---
+
+# ${content.title || 'AI 요약'}
+
+> 🔗 원본: [${currentUrl}](${currentUrl})
+> 🤖 분석: ${this.plugin.settings.ai.provider}
+> 📅 생성: ${timestamp}
+
+---
+
+${response.content}
+
+---
+
+## 원본 정보
+
+- **제목**: ${content.title || 'Untitled'}
+- **URL**: ${currentUrl}
+- **사이트**: ${content.siteName || 'Unknown'}
+`
 
                 const file = await this.app.vault.create(fileName, noteContent)
                 await this.app.workspace.getLeaf('tab').openFile(file)
@@ -385,8 +418,47 @@ export class GateView extends ItemView {
             loading.hide()
 
             if (response.success) {
-                const fileName = `AI 분석 - ${content.title || 'Untitled'} - ${new Date().toISOString().slice(0, 10)}.md`
-                const noteContent = `# ${content.title || 'AI 분석'}\n\n**프롬프트:** ${prompt}\n\n---\n\n${response.content}`
+                const timestamp = new Date().toISOString().split('T')[0]
+                const currentUrl = await ContentExtractor.getCurrentUrl(this.frame as WebviewTag)
+                const fileName = `AI 분석 - ${content.title || 'Untitled'} - ${timestamp}.md`
+
+                // YAML frontmatter가 포함된 노트 내용 생성
+                const noteContent = `---
+title: "${content.title || 'AI 분석'}"
+source: "${currentUrl}"
+created: ${timestamp}
+type: ai-analysis
+provider: ${this.plugin.settings.ai.provider}
+site: "${content.siteName || ''}"
+prompt: "${prompt.replace(/"/g, '\\"').substring(0, 100)}..."
+tags:
+  - ai-analysis
+  - easy-gate
+  - custom-prompt
+---
+
+# ${content.title || 'AI 분석'}
+
+> 🔗 원본: [${currentUrl}](${currentUrl})
+> 🤖 분석: ${this.plugin.settings.ai.provider}
+> 📅 생성: ${timestamp}
+
+---
+
+**프롬프트:** ${prompt}
+
+---
+
+${response.content}
+
+---
+
+## 원본 정보
+
+- **제목**: ${content.title || 'Untitled'}
+- **URL**: ${currentUrl}
+- **사이트**: ${content.siteName || 'Unknown'}
+`
 
                 const file = await this.app.vault.create(fileName, noteContent)
                 await this.app.workspace.getLeaf('tab').openFile(file)

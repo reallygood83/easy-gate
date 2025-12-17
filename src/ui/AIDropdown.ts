@@ -69,10 +69,19 @@ export class AIDropdown {
 
         menu.addSeparator()
 
-        // 🤖 페이지 AI 요약 (기본 동작)
+        // 헤더: AI 분석 옵션 안내
         menu.addItem((item) =>
             item
-                .setTitle('🤖 페이지 AI 요약')
+                .setTitle('🤖 AI 분석 옵션')
+                .setDisabled(true)
+        )
+
+        menu.addSeparator()
+
+        // 📄 전체 페이지 AI 분석 (기본 동작)
+        menu.addItem((item) =>
+            item
+                .setTitle('📄 전체 페이지 분석')
                 .setIcon('sparkles')
                 .setDisabled(!hasApiKey)
                 .onClick(() => {
@@ -80,11 +89,11 @@ export class AIDropdown {
                 })
         )
 
-        // 📝 선택 텍스트 AI 처리
+        // ✂️ 선택 영역 AI 분석
         menu.addItem((item) =>
             item
-                .setTitle('📝 선택 텍스트 AI 처리')
-                .setIcon('text-select')
+                .setTitle('✂️ 선택 영역 분석')
+                .setIcon('scissors')
                 .setDisabled(!hasApiKey)
                 .onClick(() => {
                     this.onAISelection()
@@ -94,7 +103,7 @@ export class AIDropdown {
         menu.addSeparator()
 
         // 📚 템플릿 선택
-        menu.addItem((item) => item.setTitle('템플릿 사용').setDisabled(true))
+        menu.addItem((item) => item.setTitle('📋 템플릿 사용').setDisabled(true))
 
         const templates = [
             { id: 'basic-summary', label: '📋 기본 요약', icon: 'file-text' },
@@ -227,10 +236,10 @@ export function createAIButton(
 ): HTMLElement {
     const wrapper = container.createDiv({ cls: 'easy-gate-ai-btn-wrapper' })
 
-    // 메인 AI 버튼 (원클릭 요약)
+    // 메인 AI 버튼 (원클릭 분석)
     const mainBtn = wrapper.createEl('button', { cls: 'easy-gate-ai-btn' })
     mainBtn.textContent = '🤖'
-    mainBtn.title = hasApiKey ? 'AI 요약' : 'API 키 필요'
+    mainBtn.title = hasApiKey ? 'AI 분석 (클릭: 전체 페이지 분석)' : 'API 키 필요'
     if (!hasApiKey) {
         mainBtn.style.opacity = '0.5'
         mainBtn.style.cursor = 'not-allowed'
@@ -245,7 +254,7 @@ export function createAIButton(
     // 드롭다운 버튼
     const dropdownBtn = wrapper.createEl('button', { cls: 'easy-gate-ai-dropdown-btn' })
     dropdownBtn.textContent = '▼'
-    dropdownBtn.title = 'AI 옵션'
+    dropdownBtn.title = 'AI 분석 옵션 더보기'
     dropdownBtn.onclick = (e) => {
         e.preventDefault()
         dropdown.show(e)
