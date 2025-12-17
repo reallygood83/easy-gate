@@ -282,14 +282,36 @@ export class GateView extends ItemView {
         } else {
             this.frame = createWebviewTag(this.options, onReady, this.frameDoc)
 
-            // Popup Handling - OAuth 로그인을 위해 부모 게이트의 profileKey 전달
+            // Popup Handling - OAuth URL은 같은 webview에서, 일반 URL은 모달로 처리
             this.frame.addEventListener('new-window', (e) => {
                 // @ts-ignore
-                const url = e.url;
-                if (url) {
-                    // 동일한 세션(profileKey)을 사용하여 OAuth 쿠키 공유
-                    new GatePopupModal(this.plugin.app, url, this.options.profileKey).open();
+                const url = e.url as string;
+                if (!url) return;
+
+                // OAuth 제공자 URL 감지 (Google, Apple, Microsoft, etc.)
+                const oauthDomains = [
+                    'accounts.google.com',
+                    'accounts.youtube.com',
+                    'appleid.apple.com',
+                    'login.microsoftonline.com',
+                    'login.live.com',
+                    'github.com/login',
+                    'api.twitter.com',
+                    'facebook.com/dialog',
+                    'facebook.com/v',
+                ];
+
+                const isOAuthUrl = oauthDomains.some(domain => url.includes(domain));
+
+                if (isOAuthUrl) {
+                    // OAuth URL은 동일한 webview에서 직접 로드 (인앱 브라우저 방식)
+                    // OAuth 완료 후 자동으로 원래 사이트로 리다이렉트됨
+                    this.navigateTo(url);
+                    return;
                 }
+
+                // 일반 팝업은 Obsidian 모달로 처리
+                new GatePopupModal(this.plugin.app, url, this.options.profileKey).open();
             });
 
             this.frame.addEventListener('destroyed', () => {
