@@ -156,6 +156,19 @@ export class GateView extends ItemView {
             // Title
             tab.createSpan({ text: gate.title, cls: 'gate-tab-title' });
 
+            // Close button (X) - 각 탭에 삭제 버튼 추가
+            const closeBtn = tab.createSpan({ cls: 'gate-tab-close' });
+            setIcon(closeBtn, 'x');
+            closeBtn.addEventListener('click', async (e) => {
+                e.stopPropagation(); // 탭 클릭 이벤트 전파 방지
+                const confirmDelete = confirm(`"${gate.title}" 게이트를 삭제하시겠습니까?`);
+                if (confirmDelete) {
+                    await this.plugin.removeGate(gate.id);
+                    this.renderTabBar(container);
+                    new Notice(`"${gate.title}" 게이트가 삭제되었습니다.`);
+                }
+            });
+
             tab.addEventListener('click', () => {
                 this.navigateTo(gate.url);
                 // currentGateState 업데이트 (readonly options 대신)

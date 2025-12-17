@@ -16,6 +16,8 @@ export const createWebviewTag = (params: Partial<GateFrameOption>, onReady?: () 
     webviewTag.setAttribute('src', params.url ?? DEFAULT_URL)
     webviewTag.setAttribute('httpreferrer', params.url ?? GOOGLE_URL)
     webviewTag.setAttribute('allowpopups', 'true')
+    // Enable JavaScript and disable contextIsolation for OAuth login support (x.com, Google, etc.)
+    webviewTag.setAttribute('webpreferences', 'javascript=yes, contextIsolation=no')
     webviewTag.addClass(OPEN_GATE_WEBVIEW_CLASS)
 
     // Set user agent (use default Chrome UA if not provided to avoid bot detection)

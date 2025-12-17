@@ -158,6 +158,31 @@ div[data-gate-id] .setting-item-name {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    flex-grow: 1;
+}
+
+/* Gate Tab Close Button (X) */
+.gate-tab-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    margin-left: 6px;
+    border-radius: 3px;
+    opacity: 0;
+    transition: all 0.2s ease;
+    color: var(--text-muted);
+}
+
+.gate-tab:hover .gate-tab-close {
+    opacity: 0.7;
+}
+
+.gate-tab-close:hover {
+    opacity: 1 !important;
+    background-color: var(--background-modifier-error);
+    color: var(--text-on-accent);
 }
 
 .gate-control-row {

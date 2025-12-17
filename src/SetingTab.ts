@@ -30,9 +30,9 @@ export class SettingTab extends PluginSettingTab {
                     cls: 'open-gate-mobile-warning'
                 })
                 .createEl('a', {
-                    text: '@duocdev',
+                    text: '@reallygood83',
                     cls: 'open-gate-mobile-link',
-                    href: 'https://twitter.com/duocdev'
+                    href: 'https://twitter.com/reallygood83'
                 })
         }
 
@@ -87,22 +87,18 @@ export class SettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Follow me on Twitter')
-            .setDesc('@duocdev')
+            .setDesc('@reallygood83')
             .addButton((button) => {
                 button.setCta()
-                button.setButtonText('Join Community').onClick(() => {
-                    window.open('https://community.aiocean.io/')
+                button.setButtonText('YouTube').onClick(() => {
+                    window.open('https://www.youtube.com/@%EB%B0%B0%EC%9B%80%EC%9D%98%EB%8B%AC%EC%9D%B8-p5v')
                 })
             })
             .addButton((button) => {
                 button.setCta()
-                button.setButtonText('Follow for update').onClick(() => {
-                    window.open('https://twitter.com/duocdev')
+                button.setButtonText('Twitter').onClick(() => {
+                    window.open('https://twitter.com/reallygood83')
                 })
-            })
-            .addButton((button) => {
-                button.buttonEl.outerHTML =
-                    "<a href='https://paypal.me/duocnguyen' target='_blank'><img style='border:0px;height:35px;' src='https://cdn.ko-fi.com/cdn/kofi3.png?v=3' /></a>"
             })
     }
 }

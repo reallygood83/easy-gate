@@ -13,19 +13,19 @@ export class ModalOnBoarding extends Modal {
 
     onOpen() {
         const { contentEl } = this
-        contentEl.createEl('h3', { text: 'Welcome to OpenGate' })
+        contentEl.createEl('h3', { text: 'Welcome to Easy Gate' })
         contentEl.createEl('p', {
-            text: 'OpenGate is a plugin that allows you to embed any website in Obsidian. You will never have to leave Obsidian again!'
+            text: 'Easy Gate is a plugin that allows you to embed any website in Obsidian. You will never have to leave Obsidian again!'
         })
 
         contentEl.createEl('p', {
-            text: 'If you need help, please join our community.'
+            text: 'If you need help, please visit our YouTube channel for tutorials.'
         })
 
         contentEl.createEl('a', {
             cls: 'community-link',
-            text: 'Community',
-            attr: { href: 'https://community.aiocean.io/' }
+            text: 'YouTube',
+            attr: { href: 'https://www.youtube.com/@%EB%B0%B0%EC%9B%80%EC%9D%98%EB%8B%AC%EC%9D%B8-p5v' }
         })
 
         contentEl.createEl('p', {
