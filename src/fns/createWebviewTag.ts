@@ -16,8 +16,11 @@ export const createWebviewTag = (params: Partial<GateFrameOption>, onReady?: () 
     webviewTag.setAttribute('src', params.url ?? DEFAULT_URL)
     webviewTag.setAttribute('httpreferrer', params.url ?? GOOGLE_URL)
     webviewTag.setAttribute('allowpopups', 'true')
-    // Enable JavaScript and disable contextIsolation for OAuth login support (x.com, Google, etc.)
-    webviewTag.setAttribute('webpreferences', 'javascript=yes, contextIsolation=no')
+    // OAuth 로그인 지원을 위한 webpreferences 설정 (Google, X.com 등)
+    // nodeIntegration=no: 보안을 위해 비활성화
+    // contextIsolation=yes: 보안 유지
+    // webSecurity=no: 크로스 오리진 OAuth 리다이렉트 허용
+    webviewTag.setAttribute('webpreferences', 'nodeIntegration=no,contextIsolation=yes,webSecurity=no,allowRunningInsecureContent=yes')
     webviewTag.addClass(OPEN_GATE_WEBVIEW_CLASS)
 
     // Set user agent (use default Chrome UA if not provided to avoid bot detection)
