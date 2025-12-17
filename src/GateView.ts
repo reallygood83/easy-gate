@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, Menu, Notice, MarkdownView, setIcon, ButtonComponent, TextComponent, DropdownComponent } from 'obsidian'
+import { ItemView, WorkspaceLeaf, Menu, Notice, MarkdownView, setIcon, ButtonComponent, TextComponent, DropdownComponent, TFile } from 'obsidian'
 import { createWebviewTag } from './fns/createWebviewTag'
 import { Platform } from 'obsidian'
 import { createIframe } from './fns/createIframe'
@@ -8,6 +8,12 @@ import { GateFrameOption } from './GateOptions'
 import OpenGatePlugin from './main'
 import { GatePopupModal } from './GatePopupModal'
 import { normalizeGateOption } from './fns/normalizeGateOption'
+// AI & Clipping imports
+import { ClipDropdown, createClipButton, AIDropdown, createAIButton, showSuccess, showError, showLoading } from './ui'
+import { ClipService, initializeClipService, getClipService, ContentExtractor } from './clipping'
+import { getAIService } from './ai'
+import { AnalysisModal, ProcessModal, AnalysisConfig } from './modals'
+import { ClipData } from './ai/types'
 
 export class GateView extends ItemView {
     private readonly options: GateFrameOption
@@ -21,6 +27,10 @@ export class GateView extends ItemView {
     private insertMode: 'cursor' | 'bottom' | 'new' = 'cursor'
     // 현재 활성화된 게이트 상태 추적 (readonly options 대신 사용)
     private currentGateState: { id: string; url: string; title: string }
+    // AI & Clipping
+    private clipDropdown: ClipDropdown | null = null
+    private aiDropdown: AIDropdown | null = null
+    private clipService: ClipService | null = null
 
     constructor(leaf: WorkspaceLeaf, options: GateFrameOption, plugin: OpenGatePlugin) {
         super(leaf)
@@ -31,6 +41,14 @@ export class GateView extends ItemView {
         this.frameReadyCallbacks = []
         // 초기 상태 설정
         this.currentGateState = { id: options.id, url: options.url, title: options.title }
+
+        // ClipService 초기화 (Desktop only)
+        if (!this.useIframe) {
+            this.clipService = getClipService() || initializeClipService({
+                vault: this.app.vault,
+                settings: this.plugin.settings.clipping
+            })
+        }
     }
 
     addActions(): void {
@@ -61,8 +79,488 @@ export class GateView extends ItemView {
         // Create Top Bar (Tabs + Controls)
         this.drawTopBar()
 
+        // Initialize AI & Clipping dropdowns (Desktop only)
+        if (!this.useIframe) {
+            this.initializeDropdowns()
+        }
+
         this.frameDoc = this.contentEl.doc
         this.createFrame()
+    }
+
+    /**
+     * Initialize ClipDropdown and AIDropdown instances
+     */
+    private initializeDropdowns(): void {
+        // Initialize Clip Dropdown
+        this.clipDropdown = new ClipDropdown({
+            app: this.app,
+            settings: this.plugin.settings.clipping,
+            onClipPage: () => this.handleClipPage(),
+            onClipSelection: () => this.handleClipSelection(),
+            onClipToNote: (file: TFile) => this.handleClipToNote(file),
+            onOpenSettings: () => this.openClipSettings()
+        })
+
+        // Initialize AI Dropdown
+        this.aiDropdown = new AIDropdown({
+            app: this.app,
+            settings: this.plugin.settings.ai,
+            savedPrompts: this.plugin.settings.savedPrompts || [],
+            onAISummary: () => this.handleAISummary(),
+            onAIWithTemplate: (templateId: string) => this.handleAIWithTemplate(templateId),
+            onAIWithPrompt: (prompt: string) => this.handleAIWithPrompt(prompt),
+            onAISelection: () => this.handleAISelection(),
+            onOpenAnalysisModal: () => this.openAnalysisModal(),
+            onOpenSettings: () => this.openAISettings()
+        })
+    }
+
+    // ============================================
+    // Clipping Handler Methods
+    // ============================================
+
+    /**
+     * 전체 페이지 원클릭 클리핑
+     */
+    private async handleClipPage(): Promise<void> {
+        if (this.useIframe || !this.clipService) {
+            showError('Desktop 환경에서만 클리핑이 가능합니다.')
+            return
+        }
+
+        const loading = showLoading('페이지 클리핑 중...')
+
+        try {
+            const result = await this.clipService.clipPage(
+                this.frame as WebviewTag,
+                this.currentGateState.id
+            )
+
+            loading.hide()
+
+            if (result.success && result.note) {
+                showSuccess(`클리핑 완료: ${result.note.path}`)
+            } else {
+                showError(result.error || '클리핑 실패')
+            }
+        } catch (error) {
+            loading.hide()
+            const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류'
+            showError(`클리핑 오류: ${errorMessage}`)
+        }
+    }
+
+    /**
+     * 선택 텍스트 클리핑
+     */
+    private async handleClipSelection(): Promise<void> {
+        if (this.useIframe || !this.clipService) {
+            showError('Desktop 환경에서만 클리핑이 가능합니다.')
+            return
+        }
+
+        const loading = showLoading('선택 텍스트 클리핑 중...')
+
+        try {
+            const result = await this.clipService.clipSelection(
+                this.frame as WebviewTag,
+                this.currentGateState.id
+            )
+
+            loading.hide()
+
+            if (result.success && result.note) {
+                showSuccess(`클리핑 완료: ${result.note.path}`)
+            } else {
+                showError(result.error || '선택된 텍스트가 없습니다.')
+            }
+        } catch (error) {
+            loading.hide()
+            const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류'
+            showError(`클리핑 오류: ${errorMessage}`)
+        }
+    }
+
+    /**
+     * 기존 노트에 클리핑 추가
+     */
+    private async handleClipToNote(targetFile: TFile): Promise<void> {
+        if (this.useIframe || !this.clipService) {
+            showError('Desktop 환경에서만 클리핑이 가능합니다.')
+            return
+        }
+
+        const loading = showLoading(`${targetFile.basename}에 추가 중...`)
+
+        try {
+            const result = await this.clipService.clipToNote(
+                this.frame as WebviewTag,
+                this.currentGateState.id,
+                targetFile
+            )
+
+            loading.hide()
+
+            if (result.success) {
+                showSuccess(`클리핑이 ${targetFile.basename}에 추가되었습니다.`)
+            } else {
+                showError(result.error || '클리핑 추가 실패')
+            }
+        } catch (error) {
+            loading.hide()
+            const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류'
+            showError(`클리핑 오류: ${errorMessage}`)
+        }
+    }
+
+    /**
+     * 클리핑 설정 열기
+     */
+    private openClipSettings(): void {
+        // 설정 탭 열기 (Obsidian 기본 API 사용)
+        // @ts-ignore - Obsidian 내부 API
+        this.app.setting?.open()
+        // @ts-ignore
+        this.app.setting?.openTabById?.(this.plugin.manifest.id)
+    }
+
+    // ============================================
+    // AI Handler Methods
+    // ============================================
+
+    /**
+     * 페이지 AI 요약 (원클릭)
+     */
+    private async handleAISummary(): Promise<void> {
+        if (this.useIframe) {
+            showError('Desktop 환경에서만 AI 기능이 가능합니다.')
+            return
+        }
+
+        const aiService = getAIService()
+        if (!aiService) {
+            showError('AI 서비스가 초기화되지 않았습니다.')
+            return
+        }
+
+        if (!aiService.isProviderConfigured(this.plugin.settings.ai.provider)) {
+            showError('API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.')
+            return
+        }
+
+        const loading = showLoading('AI 요약 생성 중...')
+
+        try {
+            // 콘텐츠 추출
+            const { ContentExtractor } = await import('./clipping')
+            const content = await ContentExtractor.extractPageContent(this.frame as WebviewTag)
+
+            if (!content) {
+                loading.hide()
+                showError('페이지 콘텐츠를 추출할 수 없습니다.')
+                return
+            }
+
+            // AI 요약 생성
+            const response = await aiService.summarizeContent(
+                content.textContent,
+                this.plugin.settings.ai.defaultLanguage
+            )
+
+            loading.hide()
+
+            if (response.success) {
+                // 요약 결과를 새 노트로 생성
+                const fileName = `AI 요약 - ${content.title || 'Untitled'} - ${new Date().toISOString().slice(0, 10)}.md`
+                const noteContent = `# ${content.title || 'AI 요약'}\n\n${response.content}\n\n---\n원본 URL: ${await ContentExtractor.getCurrentUrl(this.frame as WebviewTag)}`
+
+                const file = await this.app.vault.create(fileName, noteContent)
+                await this.app.workspace.getLeaf('tab').openFile(file)
+                showSuccess('AI 요약이 생성되었습니다.')
+            } else {
+                showError(response.error || 'AI 요약 생성 실패')
+            }
+        } catch (error) {
+            loading.hide()
+            const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류'
+            showError(`AI 오류: ${errorMessage}`)
+        }
+    }
+
+    /**
+     * 템플릿 기반 AI 처리
+     */
+    private async handleAIWithTemplate(templateId: string): Promise<void> {
+        if (this.useIframe) {
+            showError('Desktop 환경에서만 AI 기능이 가능합니다.')
+            return
+        }
+
+        const aiService = getAIService()
+        if (!aiService || !aiService.isProviderConfigured(this.plugin.settings.ai.provider)) {
+            showError('API 키가 설정되지 않았습니다.')
+            return
+        }
+
+        const loading = showLoading('콘텐츠 추출 중...')
+
+        try {
+            // 콘텐츠 추출
+            const content = await ContentExtractor.extractPageContent(this.frame as WebviewTag)
+            const url = await ContentExtractor.getCurrentUrl(this.frame as WebviewTag)
+
+            loading.hide()
+
+            if (!content) {
+                showError('페이지 콘텐츠를 추출할 수 없습니다.')
+                return
+            }
+
+            // ClipData 생성
+            const clipData: ClipData = {
+                id: `template-${Date.now()}`,
+                url: url,
+                title: content.title || 'Untitled',
+                content: content.textContent,
+                metadata: {
+                    siteName: content.siteName
+                },
+                clippedAt: new Date().toISOString(),
+                gateId: this.currentGateState.id
+            }
+
+            // 바로 ProcessModal로 처리 (템플릿 선택된 상태)
+            const config: AnalysisConfig = {
+                templateId: templateId,
+                customPrompt: null,
+                provider: this.plugin.settings.ai.provider,
+                includeMetadata: true,
+                outputFormat: 'markdown',
+                language: this.plugin.settings.ai.defaultLanguage || 'ko'
+            }
+
+            await this.runAnalysis(clipData, config)
+
+        } catch (error) {
+            loading.hide()
+            const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류'
+            showError(`템플릿 처리 오류: ${errorMessage}`)
+        }
+    }
+
+    /**
+     * 커스텀 프롬프트로 AI 처리
+     */
+    private async handleAIWithPrompt(prompt: string): Promise<void> {
+        if (this.useIframe) {
+            showError('Desktop 환경에서만 AI 기능이 가능합니다.')
+            return
+        }
+
+        const aiService = getAIService()
+        if (!aiService) {
+            showError('AI 서비스가 초기화되지 않았습니다.')
+            return
+        }
+
+        const loading = showLoading('AI 처리 중...')
+
+        try {
+            const { ContentExtractor } = await import('./clipping')
+            const content = await ContentExtractor.extractPageContent(this.frame as WebviewTag)
+
+            if (!content) {
+                loading.hide()
+                showError('페이지 콘텐츠를 추출할 수 없습니다.')
+                return
+            }
+
+            const response = await aiService.simpleGenerate(
+                `${prompt}\n\n콘텐츠:\n${content.textContent}`,
+                `당신은 웹 콘텐츠 분석 전문가입니다. 항상 ${this.plugin.settings.ai.defaultLanguage}로 응답하세요.`
+            )
+
+            loading.hide()
+
+            if (response.success) {
+                const fileName = `AI 분석 - ${content.title || 'Untitled'} - ${new Date().toISOString().slice(0, 10)}.md`
+                const noteContent = `# ${content.title || 'AI 분석'}\n\n**프롬프트:** ${prompt}\n\n---\n\n${response.content}`
+
+                const file = await this.app.vault.create(fileName, noteContent)
+                await this.app.workspace.getLeaf('tab').openFile(file)
+                showSuccess('AI 분석이 완료되었습니다.')
+            } else {
+                showError(response.error || 'AI 처리 실패')
+            }
+        } catch (error) {
+            loading.hide()
+            const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류'
+            showError(`AI 오류: ${errorMessage}`)
+        }
+    }
+
+    /**
+     * 선택 텍스트 AI 처리
+     */
+    private async handleAISelection(): Promise<void> {
+        if (this.useIframe) {
+            showError('Desktop 환경에서만 AI 기능이 가능합니다.')
+            return
+        }
+
+        const aiService = getAIService()
+        if (!aiService) {
+            showError('AI 서비스가 초기화되지 않았습니다.')
+            return
+        }
+
+        try {
+            const { ContentExtractor } = await import('./clipping')
+            const selection = await ContentExtractor.extractSelection(this.frame as WebviewTag)
+
+            if (!selection || !selection.hasSelection) {
+                showError('선택된 텍스트가 없습니다.')
+                return
+            }
+
+            const loading = showLoading('선택 텍스트 AI 처리 중...')
+
+            const response = await aiService.summarizeContent(
+                selection.text,
+                this.plugin.settings.ai.defaultLanguage
+            )
+
+            loading.hide()
+
+            if (response.success) {
+                new Notice(`AI 분석 결과:\n${response.content.substring(0, 200)}...`, 10000)
+            } else {
+                showError(response.error || 'AI 처리 실패')
+            }
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류'
+            showError(`AI 오류: ${errorMessage}`)
+        }
+    }
+
+    /**
+     * 분석 모달 열기
+     */
+    private async openAnalysisModal(): Promise<void> {
+        if (this.useIframe) {
+            showError('Desktop 환경에서만 분석 기능이 가능합니다.')
+            return
+        }
+
+        const loading = showLoading('콘텐츠 추출 중...')
+
+        try {
+            // 콘텐츠 추출
+            const content = await ContentExtractor.extractPageContent(this.frame as WebviewTag)
+            const url = await ContentExtractor.getCurrentUrl(this.frame as WebviewTag)
+
+            loading.hide()
+
+            if (!content) {
+                showError('페이지 콘텐츠를 추출할 수 없습니다.')
+                return
+            }
+
+            // ClipData 생성
+            const clipData: ClipData = {
+                id: `analysis-${Date.now()}`,
+                url: url,
+                title: content.title || 'Untitled',
+                content: content.textContent,
+                metadata: {
+                    siteName: content.siteName
+                },
+                clippedAt: new Date().toISOString(),
+                gateId: this.currentGateState.id
+            }
+
+            // AnalysisModal 열기
+            const modal = new AnalysisModal({
+                app: this.app,
+                settings: this.plugin.settings.ai,
+                savedPrompts: this.plugin.settings.savedPrompts || [],
+                clipData: clipData,
+                onAnalyze: async (config: AnalysisConfig) => {
+                    await this.runAnalysis(clipData, config)
+                },
+                onSavePrompt: (prompt) => {
+                    this.savePromptToSettings(prompt)
+                }
+            })
+            modal.open()
+
+        } catch (error) {
+            loading.hide()
+            const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류'
+            showError(`분석 모달 오류: ${errorMessage}`)
+        }
+    }
+
+    /**
+     * AI 분석 실행 (ProcessModal과 함께)
+     */
+    private async runAnalysis(clipData: ClipData, config: AnalysisConfig): Promise<void> {
+        const processModal = new ProcessModal({
+            app: this.app,
+            clipData: clipData,
+            config: config,
+            onSave: async (content: string, title: string) => {
+                return await this.saveAnalysisResult(content, title)
+            }
+        })
+        processModal.open()
+    }
+
+    /**
+     * 분석 결과 저장
+     */
+    private async saveAnalysisResult(content: string, title: string): Promise<TFile | null> {
+        try {
+            const fileName = `${title.replace(/[\\/:*?"<>|]/g, '-')}.md`
+            const file = await this.app.vault.create(fileName, content)
+            await this.app.workspace.getLeaf('tab').openFile(file)
+            return file
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : '저장 실패'
+            showError(errorMessage)
+            return null
+        }
+    }
+
+    /**
+     * 프롬프트를 설정에 저장
+     */
+    private async savePromptToSettings(prompt: { id: string; name: string; prompt: string; createdAt?: string }): Promise<void> {
+        if (!this.plugin.settings.savedPrompts) {
+            this.plugin.settings.savedPrompts = []
+        }
+        this.plugin.settings.savedPrompts.push(prompt)
+        await this.plugin.saveSettings()
+
+        // AIDropdown 업데이트
+        if (this.aiDropdown) {
+            this.aiDropdown.updateSettings(
+                this.plugin.settings.ai,
+                this.plugin.settings.savedPrompts
+            )
+        }
+    }
+
+    /**
+     * AI 설정 열기
+     */
+    private openAISettings(): void {
+        // 설정 탭 열기
+        // @ts-ignore - Obsidian 내부 API
+        this.app.setting?.open()
+        // @ts-ignore
+        this.app.setting?.openTabById?.(this.plugin.manifest.id)
     }
 
     private drawTopBar(): void {
@@ -137,6 +635,34 @@ export class GateView extends ItemView {
             .setTooltip('Apply Selection')
             .setButtonText('Apply')
             .onClick(() => this.onApplyText());
+
+        // Smart Buttons (Desktop only) - 📋 Clip, 🤖 AI
+        if (!this.useIframe) {
+            // Divider before smart buttons
+            controlRow.createSpan({ cls: 'gate-divider' });
+
+            // 📋 Clip Button with dropdown
+            if (this.clipDropdown) {
+                createClipButton(
+                    controlRow,
+                    this.clipDropdown,
+                    () => this.handleClipPage()
+                )
+            }
+
+            // 🤖 AI Button with dropdown
+            if (this.aiDropdown) {
+                const aiService = getAIService()
+                const hasApiKey = aiService?.isProviderConfigured(this.plugin.settings.ai.provider) ?? false
+
+                createAIButton(
+                    controlRow,
+                    this.aiDropdown,
+                    () => this.handleAISummary(),
+                    hasApiKey
+                )
+            }
+        }
     }
 
     private renderTabBar(container: HTMLElement) {

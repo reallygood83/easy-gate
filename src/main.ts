@@ -12,12 +12,17 @@ import { isViewExist, openView } from './fns/openView'
 import { GateView } from './GateView'
 import { setupLinkConvertMenu } from './fns/setupLinkConvertMenu'
 import { setupInsertLinkMenu } from './fns/setupInsertLinkMenu'
-import { PluginSetting } from './types'
+import { PluginSetting, DEFAULT_PLUGIN_SETTINGS } from './types'
 import { GateFrameOption, GateFrameOptionType } from './GateOptions'
+import { initializeAIService, updateAIServiceSettings } from './ai'
+import { DEFAULT_AI_SETTINGS, DEFAULT_CLIPPING_SETTINGS } from './ai/types'
 
 const DEFAULT_SETTINGS: PluginSetting = {
     uuid: '',
-    gates: {}
+    gates: {},
+    ai: DEFAULT_AI_SETTINGS,
+    clipping: DEFAULT_CLIPPING_SETTINGS,
+    savedPrompts: []
 }
 
 export default class OpenGatePlugin extends Plugin {
@@ -189,24 +194,60 @@ export default class OpenGatePlugin extends Plugin {
     }
 
     async loadSettings() {
-        this.settings = await this.loadData()
-        // merge default settings
+        const loadedData = await this.loadData()
+
+        // 기존 설정과 기본 설정 병합
         this.settings = {
             ...DEFAULT_SETTINGS,
-            ...this.settings
+            ...loadedData
         }
 
+        // gates 초기화
         if (!this.settings.gates) {
             this.settings.gates = {}
         }
 
+        // AI 설정 병합 (v2.0)
+        this.settings.ai = {
+            ...DEFAULT_AI_SETTINGS,
+            ...(loadedData?.ai || {})
+        }
+
+        // AI 모델 설정 병합
+        this.settings.ai.models = {
+            ...DEFAULT_AI_SETTINGS.models,
+            ...(loadedData?.ai?.models || {})
+        }
+
+        // API 키 설정 병합
+        this.settings.ai.apiKeys = {
+            ...(loadedData?.ai?.apiKeys || {})
+        }
+
+        // 클리핑 설정 병합 (v2.0)
+        this.settings.clipping = {
+            ...DEFAULT_CLIPPING_SETTINGS,
+            ...(loadedData?.clipping || {})
+        }
+
+        // 저장된 프롬프트 초기화 (v2.0)
+        if (!this.settings.savedPrompts) {
+            this.settings.savedPrompts = []
+        }
+
+        // Gate 정규화
         for (const gateId in this.settings.gates) {
             this.settings.gates[gateId] = normalizeGateOption(this.settings.gates[gateId])
         }
+
+        // AI 서비스 초기화
+        initializeAIService(this.settings.ai)
     }
 
     async saveSettings() {
         await this.saveData(this.settings)
+        // AI 서비스 설정 업데이트
+        updateAIServiceSettings(this.settings.ai)
     }
 
     private generateUuid() {
