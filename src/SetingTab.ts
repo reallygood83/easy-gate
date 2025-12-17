@@ -150,58 +150,78 @@ export class SettingTab extends PluginSettingTab {
      */
     private displayAPIKeySection(containerEl: HTMLElement): void {
         containerEl.createEl('h3', { text: '🔑 AI API 키 관리' })
-        containerEl.createEl('p', {
-            text: 'API 키는 한 번 설정하면 유지됩니다. 사용 시 Provider만 선택하면 됩니다.',
-            cls: 'setting-item-description'
-        })
+
+        // 안내 메시지
+        const infoEl = containerEl.createEl('div', { cls: 'setting-item-description' })
+        infoEl.style.cssText = 'margin-bottom: 16px; padding: 12px; background: var(--background-secondary); border-radius: 8px;'
+        infoEl.innerHTML = `
+            <p style="margin: 0 0 8px 0;"><strong>📌 사용 방법:</strong></p>
+            <ol style="margin: 0; padding-left: 20px;">
+                <li>사용할 AI Provider의 API 키를 입력하세요</li>
+                <li><strong>저장</strong> 버튼을 눌러 API 키를 저장하세요</li>
+                <li><strong>테스트</strong> 버튼으로 연결을 확인하세요</li>
+                <li>아래 "기본 AI Provider"에서 사용할 Provider를 선택하세요</li>
+            </ol>
+        `
 
         const providerIds = Object.keys(AI_PROVIDERS) as AIProviderType[]
 
         for (const providerId of providerIds) {
             const providerConfig = AI_PROVIDERS[providerId]
-            const hasApiKey = this.plugin.settings.ai.apiKeys[providerId] &&
-                              this.plugin.settings.ai.apiKeys[providerId]!.trim().length > 0
+            const savedApiKey = this.plugin.settings.ai.apiKeys[providerId]
+            const hasApiKey = savedApiKey && savedApiKey.trim().length > 0
             const currentModel = this.plugin.settings.ai.models[providerId]
 
+            // 상태 표시
+            const statusIcon = hasApiKey ? '🟢' : '⚪'
+            const statusText = hasApiKey ? '연결됨' : '미설정'
+
             const settingEl = new Setting(containerEl)
-                .setName(`${hasApiKey ? '✅' : '⬜'} ${providerConfig.displayName}`)
-                .setDesc(`모델: ${currentModel}`)
+                .setName(`${statusIcon} ${providerConfig.displayName}`)
+                .setDesc(`상태: ${statusText} | 모델: ${currentModel}`)
 
-            // API 키 입력 또는 마스킹 표시
-            let apiKeyInput: TextComponent
+            // 임시 API 키 저장용
+            let tempApiKey = ''
 
+            // API 키 입력
             settingEl.addText((text) => {
-                apiKeyInput = text
-                text.setPlaceholder(hasApiKey ? '••••••••••••' : 'API 키 입력...')
+                text.setPlaceholder('API 키 입력...')
                 text.inputEl.type = 'password'
-                text.inputEl.style.width = '180px'
+                text.inputEl.style.width = '200px'
 
+                // 저장된 키가 있으면 마스킹 표시
                 if (hasApiKey) {
-                    // 마스킹된 값 표시 (실제 값은 저장되어 있음)
-                    text.setValue('')
+                    text.setPlaceholder('••••••••••••••••••••')
                 }
 
-                text.onChange(async (value) => {
-                    if (value.trim().length > 0) {
-                        this.plugin.settings.ai.apiKeys[providerId] = value.trim()
-                        await this.plugin.saveSettings()
-                    }
+                text.onChange((value) => {
+                    tempApiKey = value.trim()
                 })
             })
 
-            // Test 버튼
+            // 저장 버튼
             settingEl.addButton((button) => {
                 button
-                    .setButtonText(hasApiKey ? 'Test' : '입력')
+                    .setButtonText('저장')
                     .onClick(async () => {
-                        if (!hasApiKey && apiKeyInput) {
-                            // 입력 필드에 포커스
-                            apiKeyInput.inputEl.focus()
-                            return
+                        if (tempApiKey.length > 0) {
+                            this.plugin.settings.ai.apiKeys[providerId] = tempApiKey
+                            await this.plugin.saveSettings()
+                            new Notice(`✅ ${providerConfig.displayName} API 키가 저장되었습니다.`)
+                            this.display() // UI 새로고침
+                        } else {
+                            new Notice('⚠️ API 키를 입력해주세요.')
                         }
+                    })
+            })
 
-                        // API 키 테스트
-                        button.setButtonText('...')
+            // 테스트 버튼 (키가 있을 때만 활성화)
+            settingEl.addButton((button) => {
+                button
+                    .setButtonText('테스트')
+                    .setDisabled(!hasApiKey)
+                    .onClick(async () => {
+                        button.setButtonText('테스트 중...')
                         button.setDisabled(true)
 
                         const aiService = getAIService()
@@ -216,8 +236,8 @@ export class SettingTab extends PluginSettingTab {
                             }
                         }
 
-                        button.setButtonText('Test')
-                        button.setDisabled(false)
+                        button.setButtonText('테스트')
+                        button.setDisabled(!hasApiKey)
                     })
             })
 
@@ -227,7 +247,6 @@ export class SettingTab extends PluginSettingTab {
                     .setIcon('pencil')
                     .setTooltip('모델 변경')
                     .onClick(() => {
-                        // 모델명 입력 프롬프트
                         const newModel = prompt(
                             `${providerConfig.displayName} 모델명을 입력하세요:`,
                             currentModel
@@ -262,27 +281,51 @@ export class SettingTab extends PluginSettingTab {
      * 기본 Provider 선택
      */
     private displayDefaultProviderSection(containerEl: HTMLElement): void {
+        containerEl.createEl('h3', { text: '🎯 기본 AI Provider 선택' })
+
         const configuredProviders = (Object.keys(AI_PROVIDERS) as AIProviderType[]).filter(
             (id) => this.plugin.settings.ai.apiKeys[id] && this.plugin.settings.ai.apiKeys[id]!.trim().length > 0
         )
 
+        // 설정된 Provider 목록 표시
+        if (configuredProviders.length > 0) {
+            const statusEl = containerEl.createEl('div', { cls: 'setting-item-description' })
+            statusEl.style.cssText = 'margin-bottom: 12px; padding: 8px 12px; background: var(--background-modifier-success); border-radius: 6px; color: var(--text-success);'
+            statusEl.innerHTML = `✅ <strong>${configuredProviders.length}개</strong>의 Provider가 설정되어 있습니다: ${configuredProviders.map(id => AI_PROVIDERS[id].displayName).join(', ')}`
+        } else {
+            const statusEl = containerEl.createEl('div', { cls: 'setting-item-description' })
+            statusEl.style.cssText = 'margin-bottom: 12px; padding: 8px 12px; background: var(--background-modifier-error); border-radius: 6px; color: var(--text-error);'
+            statusEl.innerHTML = '⚠️ 위에서 API 키를 설정하고 <strong>저장</strong> 버튼을 눌러주세요.'
+        }
+
         new Setting(containerEl)
-            .setName('기본 AI Provider')
-            .setDesc('API 키가 설정된 Provider만 선택할 수 있습니다.')
+            .setName('사용할 AI Provider')
+            .setDesc(configuredProviders.length > 0 ? '아래에서 기본으로 사용할 Provider를 선택하세요.' : 'API 키가 설정된 Provider만 선택할 수 있습니다.')
             .addDropdown((dropdown) => {
                 // 설정된 프로바이더만 옵션으로 추가
                 if (configuredProviders.length === 0) {
-                    dropdown.addOption('none', '설정된 Provider가 없습니다')
+                    dropdown.addOption('none', '먼저 API 키를 설정해주세요')
                     dropdown.setDisabled(true)
                 } else {
                     for (const providerId of configuredProviders) {
                         const config = AI_PROVIDERS[providerId]
                         dropdown.addOption(providerId, `${config.displayName} (${this.plugin.settings.ai.models[providerId]})`)
                     }
-                    dropdown.setValue(this.plugin.settings.ai.provider)
+
+                    // 현재 선택된 Provider가 configuredProviders에 있으면 설정
+                    if (configuredProviders.includes(this.plugin.settings.ai.provider)) {
+                        dropdown.setValue(this.plugin.settings.ai.provider)
+                    } else {
+                        // 없으면 첫 번째 Provider로 자동 설정
+                        this.plugin.settings.ai.provider = configuredProviders[0]
+                        dropdown.setValue(configuredProviders[0])
+                        this.plugin.saveSettings()
+                    }
+
                     dropdown.onChange(async (value) => {
                         this.plugin.settings.ai.provider = value as AIProviderType
                         await this.plugin.saveSettings()
+                        new Notice(`✅ ${AI_PROVIDERS[value as AIProviderType].displayName}가 기본 Provider로 설정되었습니다.`)
                     })
                 }
             })
