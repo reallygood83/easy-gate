@@ -1,6 +1,6 @@
 {
   "name": "easy-gate",
-  "version": "2.0.6",
+  "version": "2.0.7",
   "description": "Embed websites in Obsidian with multi-tab support and AI text insertion tools",
   "main": "main.js",
   "scripts": {

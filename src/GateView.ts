@@ -1226,7 +1226,10 @@ ${sourceRefs}
 
                 // 파일명 생성 (제목 기반, 특수문자 제거)
                 const sanitizedTitle = pageTitle.replace(/[\\/:*?"<>|]/g, '-').substring(0, 50);
-                const fileName = `${sanitizedTitle} - ${dateStr}.md`;
+                let fileName = `${sanitizedTitle} - ${dateStr}.md`;
+
+                // 중복 파일 체크 및 고유 파일명 생성
+                fileName = await this.getUniqueFileName(fileName);
 
                 // YAML Frontmatter 생성
                 const yamlFrontmatter = `---
@@ -1328,6 +1331,39 @@ ${formattedText}
 
         // 최종 결과: 연속된 빈 줄 제거 후 반환
         return processedLines.join('\n').replace(/\n{3,}/g, '\n\n');
+    }
+
+    /**
+     * 중복 파일명 방지를 위해 고유한 파일명 생성
+     * 파일이 이미 존재하면 (1), (2), ... 숫자를 붙여 고유하게 만듦
+     */
+    private async getUniqueFileName(fileName: string): Promise<string> {
+        const baseName = fileName.replace(/\.md$/, '');
+        const extension = '.md';
+
+        // 파일이 존재하지 않으면 원래 이름 반환
+        if (!this.plugin.app.vault.getAbstractFileByPath(fileName)) {
+            return fileName;
+        }
+
+        // 파일이 존재하면 숫자를 붙여 고유하게 만듦
+        let counter = 1;
+        let newFileName = `${baseName} (${counter})${extension}`;
+
+        while (this.plugin.app.vault.getAbstractFileByPath(newFileName)) {
+            counter++;
+            newFileName = `${baseName} (${counter})${extension}`;
+
+            // 무한 루프 방지 (최대 100개)
+            if (counter > 100) {
+                // 타임스탬프로 fallback
+                const timestamp = Date.now();
+                newFileName = `${baseName} - ${timestamp}${extension}`;
+                break;
+            }
+        }
+
+        return newFileName;
     }
 
     private createFrame(): void {
