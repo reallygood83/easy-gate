@@ -1204,13 +1204,66 @@ ${sourceRefs}
             return;
         }
 
+        // 마크다운 위계 적용: 선택된 텍스트를 정리된 형태로 변환
+        const formattedText = this.formatTextAsMarkdown(text);
+
         const activeView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
 
         if (this.insertMode === 'new') {
-            const fileName = `Note ${new Date().toISOString().slice(0, 19).replace(/T|:/g, '-')}.md`;
-            const file = await this.plugin.app.vault.create(fileName, text);
-            await this.plugin.app.workspace.getLeaf('tab').openFile(file);
-            new Notice('Created new note with text.');
+            try {
+                // 페이지 메타데이터 추출
+                const currentUrl = await ContentExtractor.getCurrentUrl(this.frame as WebviewTag);
+                const pageContent = await ContentExtractor.extractPageContent(this.frame as WebviewTag);
+
+                const pageTitle = pageContent?.title || this.currentGateState.title || 'Web Clip';
+                const siteName = pageContent?.siteName || this.extractSiteName(currentUrl);
+
+                // 현재 날짜와 시간
+                const now = new Date();
+                const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
+                const timeStr = now.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }); // HH:MM
+                const fullDateTime = `${dateStr} ${timeStr}`;
+
+                // 파일명 생성 (제목 기반, 특수문자 제거)
+                const sanitizedTitle = pageTitle.replace(/[\\/:*?"<>|]/g, '-').substring(0, 50);
+                const fileName = `${sanitizedTitle} - ${dateStr}.md`;
+
+                // YAML Frontmatter 생성
+                const yamlFrontmatter = `---
+title: "${pageTitle.replace(/"/g, '\\"')}"
+source: "${currentUrl}"
+site: "${siteName}"
+clipped: ${fullDateTime}
+type: web-clip
+tags:
+  - web-clip
+  - easy-gate
+---
+
+`;
+
+                // 전체 노트 내용 생성: YAML + 제목 + 구분선 + 내용
+                const noteContent = `${yamlFrontmatter}# ${pageTitle}
+
+> 🔗 **Source:** [${siteName}](${currentUrl})
+> 📅 **Clipped:** ${fullDateTime}
+
+---
+
+${formattedText}
+`;
+
+                const file = await this.plugin.app.vault.create(fileName, noteContent);
+                await this.plugin.app.workspace.getLeaf('tab').openFile(file);
+                new Notice(`Created new note: ${fileName}`);
+            } catch (error) {
+                console.error('Error creating note with metadata:', error);
+                // Fallback: 메타데이터 없이 기본 노트 생성
+                const fileName = `Note ${new Date().toISOString().slice(0, 19).replace(/T|:/g, '-')}.md`;
+                const file = await this.plugin.app.vault.create(fileName, formattedText);
+                await this.plugin.app.workspace.getLeaf('tab').openFile(file);
+                new Notice('Created new note with text.');
+            }
             return;
         }
 
@@ -1221,13 +1274,60 @@ ${sourceRefs}
 
         const editor = activeView.editor;
         if (this.insertMode === 'cursor') {
-            editor.replaceSelection(text);
+            editor.replaceSelection(formattedText);
         } else if (this.insertMode === 'bottom') {
             const lastLine = editor.lineCount();
-            editor.replaceRange('\n' + text, { line: lastLine, ch: 0 });
+            editor.replaceRange('\n\n' + formattedText, { line: lastLine, ch: 0 });
         }
 
         new Notice('Text applied!');
+    }
+
+    /**
+     * 선택된 텍스트를 마크다운 형식으로 포맷팅
+     * - 문단 구분
+     * - 리스트 감지 및 변환
+     * - 인용구 처리
+     */
+    private formatTextAsMarkdown(text: string): string {
+        // 기본 정리: 연속 줄바꿈 정규화
+        let formatted = text.trim();
+
+        // 줄 단위로 분리하여 처리
+        const lines = formatted.split('\n');
+        const processedLines: string[] = [];
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+
+            if (!line) {
+                // 빈 줄은 문단 구분으로 유지
+                if (processedLines.length > 0 && processedLines[processedLines.length - 1] !== '') {
+                    processedLines.push('');
+                }
+                continue;
+            }
+
+            // 번호 리스트 감지 (1. 2. 3. 또는 1) 2) 3) 형식)
+            const numberedMatch = line.match(/^(\d+)[.)]\s*(.+)$/);
+            if (numberedMatch) {
+                processedLines.push(`${numberedMatch[1]}. ${numberedMatch[2]}`);
+                continue;
+            }
+
+            // 불릿 리스트 감지 (-, *, •, ▪, ▸ 등)
+            const bulletMatch = line.match(/^[-*•▪▸►◦]\s*(.+)$/);
+            if (bulletMatch) {
+                processedLines.push(`- ${bulletMatch[1]}`);
+                continue;
+            }
+
+            // 일반 텍스트
+            processedLines.push(line);
+        }
+
+        // 최종 결과: 연속된 빈 줄 제거 후 반환
+        return processedLines.join('\n').replace(/\n{3,}/g, '\n\n');
     }
 
     private createFrame(): void {
